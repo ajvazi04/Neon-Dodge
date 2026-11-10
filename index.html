@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="sq">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Neon Space Dodge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="main-menu" class="screen">
+      <h1>NEON DODGE</h1>
+      <div class="subtitle">
+        Rekordi: <span id="record-display">0</span> |
+        <span id="record-holder">---</span>
+      </div>
+
+      <input
+        type="text"
+        id="player-name-input"
+        placeholder="EMRI YT"
+        maxlength="10" />
+
+      <button class="btn" onclick="goToModeSelect()">Fillo Lojën</button>
+      <button class="btn" onclick="showScreen('tutorial')">
+        Si luhet? (Tutorial)
+      </button>
+      <button class="btn btn-danger" onclick="exitGame()">Dalja</button>
+    </div>
+
+    <div id="mode-select" class="screen hidden">
+      <h1>Zgjidh Modin</h1>
+      <button class="btn" onclick="startGame(1)">1 Lojtar (Solo)</button>
+      <button class="btn" onclick="startGame(2)">2 Lojtarë (Co-op)</button>
+      <button class="btn btn-danger" onclick="showScreen('main-menu')">
+        Kthehu
+      </button>
+    </div>
+
+    <div id="tutorial" class="screen hidden">
+      <h1>Si Luhet?</h1>
+      <div class="panel">
+        <div class="tut-row">
+          <h3>1 Lojtar (Solo)</h3>
+          <p>
+            Përdor <strong>MOUSE-in</strong>. Anija ndjek lëvizjen e dorës
+            tënde.
+          </p>
+        </div>
+        <hr />
+        <div class="tut-row">
+          <h3>2 Lojtarë (Co-op)</h3>
+          <div class="keys-container">
+            <div>
+              <span style="color: #00f7ff">Lojtari 1:</span> <br />
+              <span class="key">W</span><span class="key">A</span
+              ><span class="key">S</span><span class="key">D</span>
+            </div>
+            <div>
+              <span style="color: #ff9900">Lojtari 2:</span> <br />
+              <span class="key">↑</span><span class="key">←</span
+              ><span class="key">↓</span><span class="key">→</span>
+            </div>
+          </div>
+        </div>
+        <hr />
+        <p style="text-align: center; color: #ffd700">ESC = PAUZË</p>
+      </div>
+      <br />
+      <button class="btn" onclick="showScreen('main-menu')">Kuptova</button>
+    </div>
+
+    <div
+      id="pause-screen"
+      class="screen hidden"
+      style="background: rgba(0, 0, 0, 0.8)">
+      <h1>PAUZË</h1>
+      <button class="btn" onclick="togglePause()">Vazhdo</button>
+      <button class="btn btn-danger" onclick="endGameManually()">
+        Dil nga loja
+      </button>
+    </div>
+
+    <div id="game-over" class="screen hidden">
+      <h1 style="color: #ff0055">LOJA MBAROI</h1>
+      <h2 id="final-stats">Pikët: 0</h2>
+      <h3 id="new-record-msg">🏆 REKORD I RI! 🏆</h3>
+      <button class="btn" onclick="showScreen('mode-select')">
+        Luaj Përsëri
+      </button>
+      <button class="btn btn-danger" onclick="showScreen('main-menu')">
+        Menuja
+      </button>
+    </div>
+
+    <div id="hud" style="display: none">
+      <div class="hud-item" style="color: #00f7ff">
+        Pikët: <span id="scoreEl">0</span>
+      </div>
+      <button id="pause-btn" onclick="togglePause()">PAUSE (ESC)</button>
+      <div class="hud-item" style="color: #ffd700">
+        Niveli: <span id="levelEl">1</span>
+      </div>
+    </div>
+
+    <div id="level-up-msg">LEVEL UP!</div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+      /* --- KONFIGURIMI BAZ --- */
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Elementet HTML
+      const scoreEl = document.getElementById("scoreEl");
+      const levelEl = document.getElementById("levelEl");
+      const levelUpMsg = document.getElementById("level-up-msg");
+      const hud = document.getElementById("hud");
+      const recordDisplay = document.getElementById("record-display");
+      const recordHolder = document.getElementById("record-holder");
+      const nameInput = document.getElementById("player-name-input");
+      const newRecordMsg = document.getElementById("new-record-msg");
+
+      // Variablat e Lojes
+      let gameRunning = false;
+      let isPaused = false;
+      let animationId;
+      let score = 0;
+      let level = 1;
+      let players = [];
+      let enemies = [];
+      let powerups = [];
+      let particles = [];
+      let keys = {};
+      let mouseX = canvas.width / 2;
+      let mouseY = canvas.height / 2;
+
+      let currentPlayerName = "Player 1";
+      // Merr rekordin nga kujtesa e browserit
+      let highScore = parseInt(localStorage.getItem("neonHighScore")) || 0;
+      let bestPlayer = localStorage.getItem("neonBestPlayer") || "---";
+
+      // Update UI fillestar
+      recordDisplay.innerText = highScore;
+      recordHolder.innerText = bestPlayer;
+
+      /* --- MENAXHIMI I EKRANEVE --- */
+      function showScreen(screenId) {
+        document
+          .querySelectorAll(".screen")
+          .forEach((s) => s.classList.add("hidden"));
+        const screen = document.getElementById(screenId);
+        if (screen) screen.classList.remove("hidden");
+      }
+
+      function goToModeSelect() {
+        const name = nameInput.value.trim();
+        currentPlayerName = name ? name : "Lojtari";
+        showScreen("mode-select");
+      }
+
+      function exitGame() {
+        if (confirm("Je i sigurt që dëshiron të dalësh?")) {
+          window.close();
+          document.body.innerHTML =
+            "<h1 style='text-align:center;margin-top:20%;color:white'>Loja u mbyll.</h1>";
+        }
+      }
+
+      /* --- PAUZA --- */
+      function togglePause() {
+        if (!gameRunning) return;
+        isPaused = !isPaused;
+
+        if (isPaused) {
+          cancelAnimationFrame(animationId);
+          showScreen("pause-screen");
+          canvas.style.cursor = "default"; // Shfaq kursorin ne pauze
+        } else {
+          document.getElementById("pause-screen").classList.add("hidden");
+          canvas.style.cursor = "none"; // Fsheh kursorin kur luan
+          animate();
+        }
+      }
+
+      function endGameManually() {
+        isPaused = false;
+        document.getElementById("pause-screen").classList.add("hidden");
+        gameRunning = false;
+        canvas.style.cursor = "default";
+        showScreen("main-menu");
+      }
+
+      /* --- INPUTS --- */
+      window.addEventListener("keydown", (e) => {
+        keys[e.key] = true;
+        if (
+          ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].indexOf(
+            e.code
+          ) > -1
+        )
+          e.preventDefault();
+        if (e.key === "Escape") togglePause();
+      });
+
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+      window.addEventListener("mousemove", (e) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+      });
+
+      window.addEventListener("resize", () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+
+      /* --- KLASAT --- */
+      class Player {
+        constructor(id, color, controlType) {
+          this.id = id;
+          this.x = canvas.width / 2 + (id === 1 ? -50 : 50);
+          this.y = canvas.height - 150;
+          this.size = 20;
+          this.color = color;
+          this.speed = 8;
+          this.controlType = controlType; // 'mouse', 'wasd', 'arrows'
+          this.dead = false;
+        }
+
+        draw() {
+          if (this.dead) return;
+          ctx.beginPath();
+          ctx.moveTo(this.x, this.y - this.size);
+          ctx.lineTo(this.x - this.size, this.y + this.size);
+          ctx.lineTo(this.x, this.y + this.size / 1.5);
+          ctx.lineTo(this.x + this.size, this.y + this.size);
+          ctx.closePath();
+          ctx.fillStyle = this.color;
+          ctx.fill();
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = this.color;
+        }
+
+        update() {
+          if (this.dead) return;
+
+          // --- KONTROLLI ME MAUS (1 Lojtar) ---
+          if (this.controlType === "mouse") {
+            // Anija merr pozicionin ekzakt të mausit
+            this.x = mouseX;
+            this.y = mouseY;
+          }
+
+          // --- KONTROLLI ME TASTIERË (2 Lojtarë) ---
+          else {
+            let dx = 0;
+            let dy = 0;
+
+            if (this.controlType === "wasd") {
+              if (keys["a"] || keys["A"]) dx = -this.speed;
+              if (keys["d"] || keys["D"]) dx = this.speed;
+              if (keys["w"] || keys["W"]) dy = -this.speed;
+              if (keys["s"] || keys["S"]) dy = this.speed;
+            }
+
+            if (this.controlType === "arrows") {
+              if (keys["ArrowLeft"]) dx = -this.speed;
+              if (keys["ArrowRight"]) dx = this.speed;
+              if (keys["ArrowUp"]) dy = -this.speed;
+              if (keys["ArrowDown"]) dy = this.speed;
+            }
+
+            this.x += dx;
+            this.y += dy;
+          }
+
+          // Kufijtë
+          if (this.x < this.size) this.x = this.size;
+          if (this.x > canvas.width - this.size)
+            this.x = canvas.width - this.size;
+          if (this.y < this.size) this.y = this.size;
+          if (this.y > canvas.height - this.size)
+            this.y = canvas.height - this.size;
+        }
+      }
+
+      class Enemy {
+        constructor() {
+          this.size = Math.random() * 25 + 20;
+          this.x = Math.random() * canvas.width;
+          this.y = -this.size;
+          this.speed = Math.random() * 3 + 3 + level * 0.6;
+          const hue = (340 + level * 20) % 360;
+          this.color = `hsl(${hue}, 100%, 50%)`;
+          this.rotation = 0;
+          this.rotationSpeed = Math.random() * 0.1 - 0.05;
+        }
+        update() {
+          this.y += this.speed;
+          this.rotation += this.rotationSpeed;
+        }
+        draw() {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(this.rotation);
+          ctx.fillStyle = this.color;
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = this.color;
+          ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+          ctx.restore();
+        }
+      }
+
+      class PowerUp {
+        constructor() {
+          this.x = Math.random() * canvas.width;
+          this.y = -20;
+          this.size = 15;
+          this.speed = 4;
+          this.color = "#00ff88";
+        }
+        update() {
+          this.y += this.speed;
+        }
+        draw() {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = this.color;
+          ctx.fill();
+        }
+      }
+
+      class Particle {
+        constructor(x, y, color) {
+          this.x = x;
+          this.y = y;
+          this.size = Math.random() * 4 + 1;
+          this.speedX = Math.random() * 6 - 3;
+          this.speedY = Math.random() * 6 - 3;
+          this.color = color;
+          this.life = 1;
+        }
+        update() {
+          this.x += this.speedX;
+          this.y += this.speedY;
+          this.life -= 0.02;
+        }
+        draw() {
+          ctx.save();
+          ctx.globalAlpha = this.life;
+          ctx.fillStyle = this.color;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      /* --- MOTORRI I LOJËS --- */
+
+      function startGame(mode) {
+        score = 0;
+        level = 1;
+        enemies = [];
+        powerups = [];
+        particles = [];
+        players = [];
+        isPaused = false;
+
+        // Logjika e kontrollit: 1 Lojtar = Mouse, 2 Lojtarë = Tastierë
+        if (mode === 1) {
+          players.push(new Player(1, "#00f7ff", "mouse"));
+        } else {
+          players.push(new Player(1, "#00f7ff", "wasd"));
+          players.push(new Player(2, "#ff9900", "arrows"));
+        }
+
+        scoreEl.innerText = score;
+        levelEl.innerText = level;
+        hud.style.display = "flex";
+        document
+          .querySelectorAll(".screen")
+          .forEach((s) => s.classList.add("hidden"));
+
+        canvas.style.cursor = "none"; // Fsheh kursorin kur fillon loja
+        gameRunning = true;
+        animate();
+      }
+
+      function createExplosion(x, y, color) {
+        for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color));
+      }
+
+      function checkLevelUp() {
+        const newLevel = Math.floor(score / 500) + 1;
+        if (newLevel > level) {
+          level = newLevel;
+          levelEl.innerText = level;
+          levelUpMsg.style.opacity = 1;
+          levelUpMsg.style.top = "40%";
+          setTimeout(() => {
+            levelUpMsg.style.opacity = 0;
+            levelUpMsg.style.top = "30%";
+          }, 1500);
+        }
+      }
+
+      function animate() {
+        if (!gameRunning) return;
+        if (isPaused) return;
+
+        ctx.fillStyle = "rgba(5, 5, 5, 0.3)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        players.forEach((p) => {
+          p.update();
+          p.draw();
+        });
+
+        if (Math.random() < 0.02 + level * 0.005) enemies.push(new Enemy());
+
+        enemies.forEach((en, i) => {
+          en.update();
+          en.draw();
+          players.forEach((p) => {
+            const dist = Math.hypot(p.x - en.x, p.y - en.y);
+            if (dist < p.size + en.size / 2) endGame();
+          });
+          if (en.y > canvas.height) {
+            enemies.splice(i, 1);
+            score += 10;
+            scoreEl.innerText = score;
+            checkLevelUp();
+          }
+        });
+
+        if (Math.random() < 0.005) powerups.push(new PowerUp());
+        powerups.forEach((pu, i) => {
+          pu.update();
+          pu.draw();
+          players.forEach((p) => {
+            if (Math.hypot(p.x - pu.x, p.y - pu.y) < p.size + pu.size) {
+              createExplosion(pu.x, pu.y, pu.color);
+              powerups.splice(i, 1);
+              score += 100;
+              scoreEl.innerText = score;
+              checkLevelUp();
+            }
+          });
+          if (pu.y > canvas.height) powerups.splice(i, 1);
+        });
+
+        particles.forEach((p, i) => {
+          p.update();
+          p.draw();
+          if (p.life <= 0) particles.splice(i, 1);
+        });
+
+        animationId = requestAnimationFrame(animate);
+      }
+
+      function endGame() {
+        gameRunning = false;
+        cancelAnimationFrame(animationId);
+        canvas.style.cursor = "default"; // Kthen kursorin
+
+        players.forEach((p) => createExplosion(p.x, p.y, p.color));
+        particles.forEach((p) => {
+          p.update();
+          p.draw();
+        });
+
+        let isNewRecord = false;
+        if (score > highScore) {
+          highScore = score;
+          bestPlayer = currentPlayerName;
+          localStorage.setItem("neonHighScore", highScore);
+          localStorage.setItem("neonBestPlayer", bestPlayer);
+          recordDisplay.innerText = highScore;
+          recordHolder.innerText = bestPlayer;
+          isNewRecord = true;
+        }
+
+        hud.style.display = "none";
+        document.getElementById(
+          "final-stats"
+        ).innerText = `Pikët: ${score} | Niveli: ${level}`;
+        newRecordMsg.style.display = isNewRecord ? "block" : "none";
+
+        setTimeout(() => {
+          showScreen("game-over");
+        }, 500);
+      }
+    </script>
+  </body>
+</html>
